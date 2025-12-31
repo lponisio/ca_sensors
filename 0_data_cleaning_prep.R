@@ -14,9 +14,6 @@ dir.CASensors <- file.path(local.path,"ca_sensors_saved")
 ## change working directory
 setwd(dir.CASensors)
 
-# for now we'll just setwd to a local directory until Lauren Makes a CA sensors folder on DB
-#setwd("~/Dropbox (Personal)/ca_sensors_saved/data/raw/")
-
 # ------------------------------------ #
 #  Read in and clean bee marking data  #
 # ------------------------------------ #
