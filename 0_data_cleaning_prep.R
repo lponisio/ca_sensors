@@ -8,16 +8,14 @@ setwd("~/")
 ## run the lab_paths script to appropriately set path for your computer (must be set up for each lab member)
 ## once amended with your computer's information, lab_paths.R can be saved to your home directory
 source("lab_paths.R")
-
-## generate path from your folder to the BMMA folder
-dir.CASensors <- file.path("~/University\ of\ Oregon\ Dropbox/Nevin\ Cullen/CA Sensors")
+local.path
+## generate path from your folder to the CA sensors folder
+dir.CASensors <- file.path(local.path,"ca_sensors_saved")
 ## change working directory
 setwd(dir.CASensors)
 
 # for now we'll just setwd to a local directory until Lauren Makes a CA sensors folder on DB
-setwd("~/Dropbox (Personal)/ca_sensors_saved/data/raw/")
-
-
+#setwd("~/Dropbox (Personal)/ca_sensors_saved/data/raw/")
 
 # ------------------------------------ #
 #  Read in and clean bee marking data  #
