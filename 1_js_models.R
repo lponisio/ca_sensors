@@ -5,7 +5,6 @@ library(tidyverse)
 library(nimble)
 library(coda)
 library(jagsUI)
-library(BPAbook)
 
 # ----------------------- #
 #  Set working directory  #
@@ -21,61 +20,81 @@ dir.CASensors <- file.path(local.path,"ca_sensors_saved")
 ## change working directory
 setwd(dir.CASensors)
 
-# Provisionally for Nevin since his computer's node id keeps changing... its a mac thing
-setwd("~/University of Oregon Dropbox/Nevin Cullen/ca_sensors_saved/")
+## need to download the BPAbook package from the following URL to install it
+## Needed for a variety of convenience functions and for toy datasets to build models
+# https://www.vogelwarte.ch/en/research/population-biology/book-bpa/
+#install.packages("../ca_sensors/src/BPAbook_0.0.1.tar.gz", repos = NULL, type = "source")
+library(BPAbook)
 
 # ----------- #
 #  Load data  #
 # ----------- #
 
-sensors.clean <- read.csv("./data/cleaned/CASensors_BeeMarking2025_clean.csv",
-                          header = T)
+# sensors.clean <- read.csv("./data/cleaned/CASensors_BeeMarking2025_clean.csv",
+#                           header = T)
+
+marks.clean <- read.csv("./data/cleaned/CASensors_BeeMarking2026.csv",
+                        header = T) %>%
+  filter(is.na(col.date) == F, # filter out empty rows attached to bottom of spreadsheet NEED TO MOVE UP TO CLEANING SCRIPT
+         is.na(Aruco_num) == F) # filter out missing codes FIGURE OUT WHERE THESE ARE COMING FROM
 
 # --------------------------------------------------- #
 #  Format bee captures into capture history matrices  #
 # --------------------------------------------------- #
 
 # For Bombus mixtus
-mixtus.caphist <- sensors.clean %>%
-  filter(bee_sp_id_Final == "mixtus",
-         caste_sex_Final == "w",
-         site == "EQN") %>%
-  mutate(capture = 1,# add a column full of 1s for captures
-         qr_num_Final = str_replace_all(qr_num_Final, "[^A-Za-z0-9_]", "")) %>% # remove non-alphanumeric or underscore characters
-  select(qr_num_Final, col.date, capture) %>% # pass only relevant columns to be reshaped
+mixtus.caphist <- marks.clean %>%
+  filter(bee_sp_id == "mixtus",
+         caste_sex == "W") %>%
+  mutate(capture = 1, # add a column full of 1s for captures
+         Aruco_num = str_replace_all(Aruco_num, "[^A-Za-z0-9_]", "")) #%>% # remove non-alphanumeric or underscore characters
+  select(Aruco_num, col.date, capture) %>% # pass only relevant columns to be reshaped
   pivot_wider(names_from = col.date, # flip the data to wide-form
               values_from = capture,
               values_fill = 0) %>% # this is where zeros get added for the bees not getting recaptured
-  arrange(qr_num_Final) %>% # sort the data by bee ID
-  column_to_rownames(var = "qr_num_Final") # make the IDs into column names
+  arrange(Aruco_num) %>% # sort the data by bee ID
+  column_to_rownames(var = "Aruco_num") # make the IDs into column names
 
 # For Bombus occidentalis
-occ.caphist <- sensors.clean %>%
-  filter(bee_sp_id_Final == "occidentalis",
-         caste_sex_Final == "w",
-         site == "EQN") %>%
+occ.caphist <- marks.clean %>%
+  filter(bee_sp_id == "occidentalis",
+         caste_sex == "W") %>%
   mutate(capture = 1,# add a column full of 1s for captures
-         qr_num_Final = str_replace_all(qr_num_Final, "[^A-Za-z0-9_]", "")) %>% # remove non-alphanumeric or underscore characters
-  select(qr_num_Final, col.date, capture) %>% # pass only relevant columns to be reshaped
+         Aruco_num = str_replace_all(Aruco_num, "[^A-Za-z0-9_]", "")) %>% # remove non-alphanumeric or underscore characters
+  select(Aruco_num, col.date, capture) %>% # pass only relevant columns to be reshaped
   pivot_wider(names_from = col.date, # flip the data to wide-form
               values_from = capture,
               values_fill = 0) %>% # this is where zeros get added for the bees not getting recaptured
-  arrange(qr_num_Final) %>% # sort the data by bee ID
-  column_to_rownames(var = "qr_num_Final") # make the IDs into column names
+  arrange(Aruco_num) %>% # sort the data by bee ID
+  column_to_rownames(var = "Aruco_num") # make the IDs into column names
 
 # For Bombus vosnesenskii
-vos.caphist <- sensors.clean %>%
-  filter(bee_sp_id_Final == "vosnesenskii",
-         caste_sex_Final == "w",
+vos.caphist <- marks.clean %>%
+  filter(bee_sp_id == "vosnesenskii",
+         caste_sex == "W",
          site == "EQN") %>%
   mutate(capture = 1,# add a column full of 1s for captures
-         qr_num_Final = str_replace_all(qr_num_Final, "[^A-Za-z0-9_]", "")) %>% # remove non-alphanumeric or underscore characters
-  select(qr_num_Final, col.date, capture) %>% # pass only relevant columns to be reshaped
+         Aruco_num = str_replace_all(Aruco_num, "[^A-Za-z0-9_]", "")) %>% # remove non-alphanumeric or underscore characters
+  select(Aruco_num, col.date, capture) %>% # pass only relevant columns to be reshaped
   pivot_wider(names_from = col.date, # flip the data to wide-form
               values_from = capture,
               values_fill = 0) %>% # this is where zeros get added for the bees not getting recaptured
-  arrange(qr_num_Final) %>% # sort the data by bee ID
-  column_to_rownames(var = "qr_num_Final") # make the IDs into column names
+  arrange(Aruco_num) %>% # sort the data by bee ID
+  column_to_rownames(var = "Aruco_num") # make the IDs into column names
+
+# For Bombus caliginosus
+cal.caphist <- marks.clean %>%
+  filter(bee_sp_id == "caliginosus",
+         caste_sex == "W",
+         site == "EQN") %>%
+  mutate(capture = 1,# add a column full of 1s for captures
+         Aruco_num = str_replace_all(Aruco_num, "[^A-Za-z0-9_]", "")) %>% # remove non-alphanumeric or underscore characters
+  select(Aruco_num, col.date, capture) %>% # pass only relevant columns to be reshaped
+  pivot_wider(names_from = col.date, # flip the data to wide-form
+              values_from = capture,
+              values_fill = 0) %>% # this is where zeros get added for the bees not getting recaptured
+  arrange(Aruco_num) %>% # sort the data by bee ID
+  column_to_rownames(var = "Aruco_num") # make the IDs into column names
 
 # ---------------------- #
 #  Define JS model code  #
@@ -227,50 +246,264 @@ run_js_mcmc <- function(CH,
 # --------------- #
 #  Run JS models  #
 # --------------- #
+mod.parameters = c("psi","b","Nsuper","N","B","gamma","mu.p","p",
+                   "mu.phi","sigma.phi","eps.phi","phi")
 
 # Bombus vosnesenskii
 out.vos1 <- run_js_mcmc(
   CH = vos.caphist,
   js_code = jsRandTimeCode,
-  nz = 50, ni = 4000, nb = 1000, nt = 3, nc = 4,
-  parameters = c("psi","b","Nsuper","N","B","gamma","mu.p","p",
-                 "mu.phi","sigma.phi","eps.phi","phi")
+  nz = 100, ni = 30000, nb = 10000, nt = 3, nc = 4,
+  parameters = mod.parameters
   )
 
 # Generate summary of MCMC run and print main results
-vos.summary <- nimbleSummary(out.vos1, parameters) # Convert to jagsUI output format
+vos.summary <- nimbleSummary(out.vos1, mod.parameters) # Convert to jagsUI output format
 print(vos.summary, 3) # Summary
 
 # visualize model run, currently commented out to prevent accidental runs
-# jagsUI::traceplot(vos.summary) # Traceplots    
+#jagsUI::traceplot(vos.summary) # Traceplots    
 
 # Bombus occidentalis
 out.occ1 <- run_js_mcmc(
   CH = occ.caphist,
   js_code = jsRandTimeCode,
-  nz = 50, ni = 60000, nb = 30000, nt = 3, nc = 4,
-  parameters = c("psi","b","Nsuper","N","B","gamma","mu.p","p",
-                 "mu.phi","sigma.phi","eps.phi","phi")
+  nz = 150, ni = 30000, nb = 10000, nt = 3, nc = 4,
+  parameters = mod.parameters
   )
 
 # Generate summary of MCMC run and print main results
-occ.summary <- nimbleSummary(out.occ1, parameters) # Convert to jagsUI output format
+occ.summary <- nimbleSummary(out.occ1, mod.parameters) # Convert to jagsUI output format
 print(occ.summary, 3) # Summary
 
 # visualize model run, currently commented out to prevent accidental runs
-# jagsUI::traceplot(occ.summary) # Traceplots  
+jagsUI::traceplot(occ.summary) # Traceplots  
 
 # Bombus mixtus
 out.mix1 <- run_js_mcmc(
+  CH = mixtus.caphist,
   js_code = jsRandTimeCode,
-  nz = 50, ni = 60000, nb = 30000, nt = 3, nc = 4,
-  parameters = c("psi","b","Nsuper","N","B","gamma","mu.p","p",
-                 "mu.phi","sigma.phi","eps.phi","phi")
+  nz = 120, ni = 30000, nb = 10000, nt = 3, nc = 4,
+  parameters = mod.parameters
   )
 
 # Generate summary of MCMC run and print main results
-mix.summary <- nimbleSummary(out.mix1, parameters) # Convert to jagsUI output format
+mix.summary <- nimbleSummary(out.mix1, mod.parameters) # Convert to jagsUI output format
 print(mix.summary, 3) # Summary
 
+# visualize model run, currently commented out to prevent accidental runs, it can take a while to run
+jagsUI::traceplot(mix.summary) # Traceplots  
+
+# Bombus caliginosus
+out.cal1 <- run_js_mcmc(
+  CH = cal.caphist,
+  js_code = jsRandTimeCode,
+  nz = 120, ni = 30000, nb = 10000, nt = 3, nc = 4,
+  parameters = mod.parameters
+)
+
+# Generate summary of MCMC run and print main results
+cal.summary <- nimbleSummary(out.cal1, mod.parameters) # Convert to jagsUI output format
+print(cal.summary, 3) # Summary
+
+# visualize model run, currently commented out to prevent accidental runs, it can take a while to run
+jagsUI::traceplot(cal.summary) # Traceplots  
+
+####################################
+########## TESTING ZONE ############
+####################################
+
+library(nimble)
+library(dplyr)
+
+## ---------------------------------------------------------------
+## 1. BUILD GRID COORDINATES FIRST (needs to exist before occ.trap)
+## ---------------------------------------------------------------
+spacing <- 130  # meters; placeholder, replace with real value
+
+grid_coords <- expand.grid(
+  col_letter = LETTERS[6:10],   # F, G, H, I, J
+  row_number = 3:6              # 3, 4, 5, 6
+) %>%
+  mutate(
+    grid_cell = paste0(col_letter, row_number),   # renamed to match downstream code
+    col_index = match(col_letter, LETTERS[6:10]),
+    row_index = row_number - 2,
+    x = col_index * spacing,
+    y = -row_index * spacing
+  ) %>%
+  select(grid_cell, x, y)
+
+## ---------------------------------------------------------------
+## 2. CAPTURE DATA
+## ---------------------------------------------------------------
+capture_data <- mixtus.caphist %>%
+  select(Aruco_num, col.date, grid_cell, coll_init)
+
+## ---------------------------------------------------------------
+## 3. TEMPORARY EFFORT STAND-IN (remove once real effort data is entered)
+## ---------------------------------------------------------------
+effort_data <- capture_data %>%
+  distinct(col.date, grid_cell, coll_init) %>%
+  mutate(
+    active_search_min = 15,
+    elapsed_min = NA_real_
+  ) %>%
+  arrange(col.date, grid_cell, coll_init)
+
+## ---------------------------------------------------------------
+## 4. OCCASION TABLE
+## ---------------------------------------------------------------
+occ.table <- effort_data %>%
+  filter(active_search_min > 0) %>%
+  arrange(col.date, grid_cell, coll_init) %>%
+  mutate(occ.id = row_number())
+
+n.occ <- nrow(occ.table)
+
+## now this will resolve correctly since column names match
+occ.trap <- match(occ.table$grid_cell, grid_coords$grid_cell)
+
+## sanity check -- should be zero NAs
+stopifnot(sum(is.na(occ.trap)) == 0)
+
+## ---------------------------------------------------------------
+## 5. INDIVIDUAL / DETECTION MATRIX
+## ---------------------------------------------------------------
+ind.ids <- sort(unique(capture_data$Aruco_num))
+n.ind   <- length(ind.ids)
+
+y.detect <- matrix(0, nrow = n.ind, ncol = n.occ)
+
+for(k in seq_len(nrow(capture_data))){
+  i <- match(capture_data$Aruco_num[k], ind.ids)
+  o <- which(occ.table$col.date == capture_data$col.date[k] &
+               occ.table$grid_cell == capture_data$grid_cell[k])
+  if(length(o) >= 1) y.detect[i, o] <- 1
+}
+
+M <- n.ind + round(n.ind * 1.2)
+y.full <- rbind(y.detect, matrix(0, M - n.ind, n.occ))
+
+## ---------------------------------------------------------------
+## 6. STATE-SPACE LIMITS AND AREA
+## ---------------------------------------------------------------
+buffer <- 3 * spacing
+
+xlim <- c(min(grid_coords$x) - buffer, max(grid_coords$x) + buffer)
+ylim <- c(min(grid_coords$y) - buffer, max(grid_coords$y) + buffer)
+area <- diff(xlim) * diff(ylim) / 10000  # hectares
+
+## ---------------------------------------------------------------
+## 7. NIMBLE MODEL (updated to occasion-based structure)
+## ---------------------------------------------------------------
+SCRcode <- nimbleCode({
+  
+  psi   ~ dunif(0, 1)
+  p0    ~ dunif(0, 1)
+  sigma ~ dunif(0, 500)   # widened to match spatial scale of the grid (meters)
+  
+  for(i in 1:M){
+    z[i] ~ dbern(psi)
+    s[i, 1] ~ dunif(xlim[1], xlim[2])
+    s[i, 2] ~ dunif(ylim[1], ylim[2])
+    
+    for(o in 1:n.occ){
+      d2[i, o] <- (s[i, 1] - X[occ.trap[o], 1])^2 + (s[i, 2] - X[occ.trap[o], 2])^2
+      p[i, o]  <- p0 * exp(-d2[i, o] / (2 * sigma^2)) * z[i]
+      y[i, o] ~ dbern(p[i, o])
+    }
+  }
+  
+  N <- sum(z[1:M])
+  D <- N / area
+})
+
+## ---------------------------------------------------------------
+## 8. CONSTANTS, DATA, INITS
+## ---------------------------------------------------------------
+SCRconstants <- list(
+  M        = M,
+  n.occ    = n.occ,
+  occ.trap = occ.trap,
+  X        = as.matrix(grid_coords[, c("x", "y")]),
+  xlim     = xlim,
+  ylim     = ylim,
+  area     = area
+)
+
+SCRdata <- list(y = y.full)
+
+## give detected individuals a reasonable starting activity center
+s.init <- cbind(runif(M, xlim[1], xlim[2]), runif(M, ylim[1], ylim[2]))
+for(i in 1:n.ind){
+  det.occ <- which(y.full[i, ] > 0)
+  if(length(det.occ) > 0){
+    s.init[i, ] <- colMeans(SCRconstants$X[occ.trap[det.occ], , drop = FALSE])
+  }
+}
+
+SCRinits <- list(
+  z     = c(rep(1, n.ind), rbinom(M - n.ind, 1, 0.3)),
+  s     = s.init,
+  psi   = 0.5,
+  p0    = 0.1,
+  sigma = 170    # more realistic starting value given 130m grid spacing
+)
+
+## ---------------------------------------------------------------
+## 9. BUILD, COMPILE, RUN (short test run first)
+## ---------------------------------------------------------------
+SCRmodel <- nimbleModel(code = SCRcode, constants = SCRconstants,
+                        data = SCRdata, inits = SCRinits)
+
+SCRcompiled <- compileNimble(SCRmodel)
+
+SCRconf <- configureMCMC(SCRmodel, monitors = c("N", "D", "p0", "sigma", "psi"))
+SCRmcmc <- buildMCMC(SCRconf)
+SCRcompiledMCMC <- compileNimble(SCRmcmc, project = SCRmodel)
+
+## short test run to confirm everything runs end-to-end
+test.samples <- runMCMC(SCRcompiledMCMC,
+                        niter = 5000,
+                        nburnin = 1000,
+                        nchains = 3, samplesAsCodaMCMC = TRUE)
+
+summary(test.samples)
+
+mod.parameters <- c("N", "D", "p0", "sigma", "psi")
+
+s.mix.summary <- nimbleSummary(test.samples, mod.parameters) # Convert to jagsUI output format
+print(s.mix.summary, 3) # Summary
+
 # visualize model run, currently commented out to prevent accidental runs
-# jagsUI::traceplot(mix.summary) # Traceplots  
+jagsUI::traceplot(s.mix.summary) # Traceplots  
+
+
+
+##############################################
+########## ^^^^^ TESTING ZONE^^^^^ ###########
+##############################################
+# ----------------- #
+# Plot model output #
+# ----------------- #
+source("../ca_sensors/src/plot_js_output.R")
+
+result <- plot_js_output(
+  mcmc.out       = out.cal1,
+  mod.parameters = mod.parameters,
+  caphist        = cal.caphist
+)
+
+result$plot        # view the plot
+result$data        # inspect the underlying dataframe
+
+vos.plot <- result$plot +
+  labs(x = "Date", y = "Number of Bombus vosnesenskii",
+       caption = str_wrap("Estimated and observed population size of Bombus mixtus. Black points represent mean estimates of population size. Error bars represent 95% credible intervals. Red points represent the observed number of bees captured at each sampling event. Blue points represent the total number of recaptures at each sampling event.", width = 100)) +
+  theme(legend.position = "bottom",
+        plot.caption = element_text(hjust = 0))
+
+# mix.est.plot
+# ggsave(plot = mix.est.plot, units = "in", width = 6.5, height = 5, device = "png",
+#        file = "./ca_sensors_saved/figures/CASensors_2026_Bmixtus_JSmodel_est_N.png")
