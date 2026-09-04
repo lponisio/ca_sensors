@@ -6,6 +6,9 @@ library(nimble)
 library(coda)
 library(jagsUI)
 library(patchwork)
+library(vegan)
+library(tidyr)
+library(BPAbook)
 
 # ----------------------- #
 #  Set working directory  #
@@ -31,298 +34,92 @@ library(BPAbook)
 #  Load data  #
 # ----------- #
 
-# sensors.clean <- read.csv("./data/cleaned/CASensors_BeeMarking2025_clean.csv",
-#                           header = T)
-
 marks.clean <- read.csv("./data/cleaned/CASensors_BeeMarking2026.csv",
-                        header = T) %>%
-  filter(is.na(col.date) == F, # filter out empty rows attached to bottom of spreadsheet NEED TO MOVE UP TO CLEANING SCRIPT
-         is.na(Aruco_num) == F, # filter out missing codes FIGURE OUT WHERE THESE ARE COMING FROM
-         site == "EQN") 
+                        header = T)
 
 flowers.clean <- read.csv("./data/cleaned/CASensors_Flowers_clean2026.csv",
-                        header = T) %>%
-  filter(site == "EQN")
-  
+                        header = T)
+
+cam.station.clean <- read.csv("./data/cleaned/CASensors_canopyCover_cleaned.csv",
+                          header = T)
+
 # --------------------------------------------------- #
 #  Format bee captures into capture history matrices  #
 # --------------------------------------------------- #
 
-# For Bombus mixtus
+### NOTE: PRESENTLY ONLY USING MIXTUS CAPTURE DATA TO BUILD MODEL
+###       OTHER SPECIES WILL BE INCLUDED AFTER MODEL IS CLOSER TO COMPLETION
+# Bombus mixtus
 mixtus.caphist <- marks.clean %>%
-  filter(bee_sp_id == "mixtus",
-         caste_sex == "W") %>%
+  filter(bee_sp_id == "mixtus", # filter to just B. mixtus
+         caste_sex == "W", # only workers
+         col.date != "2026-07-28") %>% # remove all observations from this week - no floral surveys performed this week and few bees captured
   mutate(capture = 1, # add a column full of 1s for captures
-         Aruco_num = str_replace_all(Aruco_num, "[^A-Za-z0-9_]", "")) #%>% # remove non-alphanumeric or underscore characters
-  # select(Aruco_num, col.date, capture) %>% # pass only relevant columns to be reshaped
-  # pivot_wider(names_from = col.date, # flip the data to wide-form
-  #             values_from = capture,
-  #             values_fill = 0) %>% # this is where zeros get added for the bees not getting recaptured
-  # arrange(Aruco_num) %>% # sort the data by bee ID
-  # column_to_rownames(var = "Aruco_num") # make the IDs into column names
+         Aruco_num = str_replace_all(Aruco_num, "[^A-Za-z0-9_]", ""))
 
 # For Bombus occidentalis
-occ.caphist <- marks.clean %>%
-  filter(bee_sp_id == "occidentalis",
-         caste_sex == "W") %>%
-  mutate(capture = 1,# add a column full of 1s for captures
-         Aruco_num = str_replace_all(Aruco_num, "[^A-Za-z0-9_]", "")) %>% # remove non-alphanumeric or underscore characters
-  select(Aruco_num, col.date, capture) %>% # pass only relevant columns to be reshaped
-  pivot_wider(names_from = col.date, # flip the data to wide-form
-              values_from = capture,
-              values_fill = 0) %>% # this is where zeros get added for the bees not getting recaptured
-  arrange(Aruco_num) %>% # sort the data by bee ID
-  column_to_rownames(var = "Aruco_num") # make the IDs into column names
+# occ.caphist <- marks.clean %>%
+#   filter(bee_sp_id == "occidentalis",
+#          caste_sex == "W") %>%
+#   mutate(capture = 1,# add a column full of 1s for captures
+#          Aruco_num = str_replace_all(Aruco_num, "[^A-Za-z0-9_]", "")) %>% # remove non-alphanumeric or underscore characters
+#   select(Aruco_num, col.date, capture) %>% # pass only relevant columns to be reshaped
+#   pivot_wider(names_from = col.date, # flip the data to wide-form
+#               values_from = capture,
+#               values_fill = 0) %>% # this is where zeros get added for the bees not getting recaptured
+#   arrange(Aruco_num) %>% # sort the data by bee ID
+#   column_to_rownames(var = "Aruco_num") # make the IDs into column names
+# 
+# # For Bombus vosnesenskii
+# vos.caphist <- marks.clean %>%
+#   filter(bee_sp_id == "vosnesenskii",
+#          caste_sex == "W",
+#          site == "EQN") %>%
+#   mutate(capture = 1,# add a column full of 1s for captures
+#          Aruco_num = str_replace_all(Aruco_num, "[^A-Za-z0-9_]", "")) %>% # remove non-alphanumeric or underscore characters
+#   select(Aruco_num, col.date, capture) %>% # pass only relevant columns to be reshaped
+#   pivot_wider(names_from = col.date, # flip the data to wide-form
+#               values_from = capture,
+#               values_fill = 0) %>% # this is where zeros get added for the bees not getting recaptured
+#   arrange(Aruco_num) %>% # sort the data by bee ID
+#   column_to_rownames(var = "Aruco_num") # make the IDs into column names
+# 
+# # For Bombus caliginosus
+# cal.caphist <- marks.clean %>%
+#   filter(bee_sp_id == "caliginosus",
+#          caste_sex == "W",
+#          site == "EQN") %>%
+#   mutate(capture = 1,# add a column full of 1s for captures
+#          Aruco_num = str_replace_all(Aruco_num, "[^A-Za-z0-9_]", "")) %>% # remove non-alphanumeric or underscore characters
+#   select(Aruco_num, col.date, capture) %>% # pass only relevant columns to be reshaped
+#   pivot_wider(names_from = col.date, # flip the data to wide-form
+#               values_from = capture,
+#               values_fill = 0) %>% # this is where zeros get added for the bees not getting recaptured
+#   arrange(Aruco_num) %>% # sort the data by bee ID
+#   column_to_rownames(var = "Aruco_num") # make the IDs into column names
 
-# For Bombus vosnesenskii
-vos.caphist <- marks.clean %>%
-  filter(bee_sp_id == "vosnesenskii",
-         caste_sex == "W",
-         site == "EQN") %>%
-  mutate(capture = 1,# add a column full of 1s for captures
-         Aruco_num = str_replace_all(Aruco_num, "[^A-Za-z0-9_]", "")) %>% # remove non-alphanumeric or underscore characters
-  select(Aruco_num, col.date, capture) %>% # pass only relevant columns to be reshaped
-  pivot_wider(names_from = col.date, # flip the data to wide-form
-              values_from = capture,
-              values_fill = 0) %>% # this is where zeros get added for the bees not getting recaptured
-  arrange(Aruco_num) %>% # sort the data by bee ID
-  column_to_rownames(var = "Aruco_num") # make the IDs into column names
+# ------------------------------------------------------------------------------------ #
+# ORGANIZE DATA FOR POPULATION MODEL, PREPARE POPULATION MODEL STRUCTURE AND RUN MODEL #
+# ------------------------------------------------------------------------------------ #
 
-# For Bombus caliginosus
-cal.caphist <- marks.clean %>%
-  filter(bee_sp_id == "caliginosus",
-         caste_sex == "W",
-         site == "EQN") %>%
-  mutate(capture = 1,# add a column full of 1s for captures
-         Aruco_num = str_replace_all(Aruco_num, "[^A-Za-z0-9_]", "")) %>% # remove non-alphanumeric or underscore characters
-  select(Aruco_num, col.date, capture) %>% # pass only relevant columns to be reshaped
-  pivot_wider(names_from = col.date, # flip the data to wide-form
-              values_from = capture,
-              values_fill = 0) %>% # this is where zeros get added for the bees not getting recaptured
-  arrange(Aruco_num) %>% # sort the data by bee ID
-  column_to_rownames(var = "Aruco_num") # make the IDs into column names
-
-# ---------------------- #
-#  Define JS model code  #
-# ---------------------- #
-
-jsRandTimeCode <- nimbleCode({
-  
-  #-------------------------------------------------
-  # Priors: survival (phi) random intercept
-  #-------------------------------------------------
-  mu.phi ~ dnorm(0, 1)
-  sigma.phi ~ dunif(0, 5)
-  tau.phi <- 1 / (sigma.phi * sigma.phi)
-  
-  for (t in 1:(n.occasions - 1)) {
-    eps.phi[t] ~ dnorm(0, tau.phi)
-    logit(phi[t]) <- mu.phi + eps.phi[t]
-  }
-  
-  #-------------------------------------------------
-  # Priors: detection (p) constant across time
-  #-------------------------------------------------
-  mu.p ~ dnorm(0, 1)
-  
-  for (t in 1:n.occasions) {
-    logit(p[t]) <- mu.p
-  }
-  
-  #-------------------------------------------------
-  # Recruitment probability (gamma)
-  #-------------------------------------------------
-  for (t in 1:n.occasions) {
-    gamma[t] ~ dunif(0, 1)
-  }
-  
-  #-------------------------------------------------
-  # Likelihood
-  #-------------------------------------------------
-  for (i in 1:M) {
-    z[i,1] ~ dbern(gamma[1])
-    y[i,1] ~ dbern(z[i,1] * p[1])
-    
-    for (t in 2:n.occasions) {
-      q[i,t-1] <- 1 - z[i,t-1]
-      z[i,t] ~ dbern(phi[t-1] * z[i,t-1] + gamma[t] * prod(q[i,1:(t-1)]))
-      y[i,t] ~ dbern(z[i,t] * p[t])
-    }
-  }
-  
-  #-------------------------------------------------
-  # Derived quantities
-  #-------------------------------------------------
-  qgamma[1:n.occasions] <- 1 - gamma[1:n.occasions]
-  cprob[1] <- gamma[1]
-  for (t in 2:n.occasions){
-    cprob[t] <- gamma[t] * prod(qgamma[1:(t-1)])
-  }
-  
-  psi <- sum(cprob[1:n.occasions])
-  b[1:n.occasions] <- cprob[1:n.occasions] / psi
-  
-  for (i in 1:M){
-    recruit[i,1] <- z[i,1]
-    for (t in 2:n.occasions){
-      recruit[i,t] <- (1 - z[i,t-1]) * z[i,t]
-    }
-  }
-  
-  for (t in 1:n.occasions){
-    N[t] <- sum(z[1:M,t])
-    B[t] <- sum(recruit[1:M,t])
-  }
-  
-  for (i in 1:M){
-    Nind[i] <- sum(z[i,1:n.occasions])
-    Nalive[i] <- 1 - equals(Nind[i], 0)
-  }
-  
-  Nsuper <- sum(Nalive[1:M])
-  })
-
-# ----------------------------------
-#  Define function for running MCMC
-# ----------------------------------
-run_js_mcmc <- function(CH,
-                        js_code,
-                        nz = 50,
-                        parameters = c(
-                          "psi","b","Nsuper","N","B","gamma","mu.p","p",
-                          "mu.phi","sigma.phi","eps.phi","phi"
-                        ),
-                        ni = 60000, nb = 30000, nt = 3, nc = 4) {
-  
-  # ---- Augment capture histories ----
-  CH <- as.matrix(CH)
-  CH.aug <- rbind(CH, matrix(0, ncol = ncol(CH), nrow = nz))
-  n.occasions <- ncol(CH)
-  
-  rownames(CH.aug) <- as.character(1:nrow(CH.aug))
-  colnames(CH.aug) <- as.character(1:ncol(CH.aug))
-  
-  # ---- Data + constants ----
-  dataList  <- list(y = CH.aug)
-  constList <- list(n.occasions = ncol(CH.aug), M = nrow(CH.aug))
-  
-  # ---- Latent-state initializer ----
-  init_latent <- function(x) {
-    if (!any(x == 1)) {
-      x[] <- 1
-      return(x)
-    }
-    first <- which(x == 1)[1]
-    last  <- rev(which(x == 1))[1]
-    x[first:last] <- 1
-    x
-  }
-  
-  z_inits <- t(apply(CH.aug, 1, init_latent))
-  
-  # ---- Initial values ----
-  inits <- function() {
-    list(
-      mu.phi    = rnorm(1, 0, 0.5),
-      sigma.phi = runif(1, 0.05, 0.6),
-      eps.phi   = rnorm(n.occasions - 1, 0, 0.2),
-      
-      mu.p      = rnorm(1, qlogis(0.3), 0.5),
-      gamma     = runif(n.occasions, 0.05, 0.4),
-      
-      z = z_inits
-    )
-  }
-  
-  # ---- Run Nimble MCMC (return only this) ----
-  nimbleMCMC(
-    code     = js_code,
-    data     = dataList,
-    constants= constList,
-    inits    = inits(),
-    monitors = parameters,
-    niter    = ni,
-    nburnin  = nb,
-    nchains  = nc,
-    thin     = nt,
-    samplesAsCodaMCMC = TRUE
-  )
-}
-
-# --------------- #
-#  Run JS models  #
-# --------------- #
-mod.parameters = c("psi","b","Nsuper","N","B","gamma","mu.p","p",
-                   "mu.phi","sigma.phi","eps.phi","phi")
-
-# Bombus vosnesenskii
-out.vos1 <- run_js_mcmc(
-  CH = vos.caphist,
-  js_code = jsRandTimeCode,
-  nz = 100, ni = 30000, nb = 10000, nt = 3, nc = 4,
-  parameters = mod.parameters
-  )
-
-# Generate summary of MCMC run and print main results
-vos.summary <- nimbleSummary(out.vos1, mod.parameters) # Convert to jagsUI output format
-print(vos.summary, 3) # Summary
-
-# visualize model run, currently commented out to prevent accidental runs
-#jagsUI::traceplot(vos.summary) # Traceplots    
-
-# Bombus occidentalis
-out.occ1 <- run_js_mcmc(
-  CH = occ.caphist,
-  js_code = jsRandTimeCode,
-  nz = 150, ni = 30000, nb = 10000, nt = 3, nc = 4,
-  parameters = mod.parameters
-  )
-
-# Generate summary of MCMC run and print main results
-occ.summary <- nimbleSummary(out.occ1, mod.parameters) # Convert to jagsUI output format
-print(occ.summary, 3) # Summary
-
-# visualize model run, currently commented out to prevent accidental runs
-jagsUI::traceplot(occ.summary) # Traceplots  
-
-# Bombus mixtus
-out.mix1 <- run_js_mcmc(
-  CH = mixtus.caphist,
-  js_code = jsRandTimeCode,
-  nz = 120, ni = 30000, nb = 10000, nt = 3, nc = 4,
-  parameters = mod.parameters
-  )
-
-# Generate summary of MCMC run and print main results
-mix.summary <- nimbleSummary(out.mix1, mod.parameters) # Convert to jagsUI output format
-print(mix.summary, 3) # Summary
-
-# visualize model run, currently commented out to prevent accidental runs, it can take a while to run
-jagsUI::traceplot(mix.summary) # Traceplots  
-
-# Bombus caliginosus
-out.cal1 <- run_js_mcmc(
-  CH = cal.caphist,
-  js_code = jsRandTimeCode,
-  nz = 120, ni = 30000, nb = 10000, nt = 3, nc = 4,
-  parameters = mod.parameters
-)
-
-# Generate summary of MCMC run and print main results
-cal.summary <- nimbleSummary(out.cal1, mod.parameters) # Convert to jagsUI output format
-print(cal.summary, 3) # Summary
-
-# visualize model run, currently commented out to prevent accidental runs, it can take a while to run
-jagsUI::traceplot(cal.summary) # Traceplots  
-
-####################################
-########## TESTING ZONE ############
-####################################
-
-library(nimble)
-library(dplyr)
-library(tidyr)
-library(vegan)
+# 1 - generates coordinates for the camera grid, they're approximately correct
+# 2 - select only the relevant information from the capture history df (can move this section above)
+# 3 - generate effort data from capture history
+# 4 - generate occasion table
+  # 4a - generate numbered weeks of study to ensure bee marking and veg surveys line up
+  # 4b - make occasion table, join weeks into dataframe
+  # 4c - generate floral richness counts and tidy floral richness df
+  # 4d - fill-in missing floral richness counts (week 2 and random 1-off grid cells)
+  # 4e - organize canopy cover covariate
+  # 4f - join floral data and canopy cover with occasion table
+  # 4g - pull out core model dimensions and index vectors
+  # 4h - simulate camera trap data (temporary, replace with real camera trap data)
+# 5 - create individual/detection matrix
+# 6 - define state space/area (replace with dimensions from map...)
+# 7 - Generate initial values for latent states an activity centers
+# 8 - Nimble model code
+# 9 - Set constants and assign initial values to lists
+# 10 - Run models and visualize preliminary outputs
 
 ## =================================================================
 ## 1. GRID COORDINATES
@@ -366,9 +163,9 @@ effort_data <- capture_data %>%
   ) %>%
   arrange(col.date, grid_cell, coll_init)
 
-## =================================================================
+## =========================================================================
 ## 4. OCCASION TABLE + PRIMARY PERIOD (WEEK) ASSIGNMENT + FLORAL SURVEY DATA
-## =================================================================
+## =========================================================================
 
 ## 4A. SEASON BOUNDS + WEEK MAP
 
@@ -403,7 +200,6 @@ occ.table <- effort_data %>%
 bee_survey_start <- min(occ.table$col.date)
 
 floral_data <- flowers.clean %>%
-  filter(site == "EQN") %>%
   mutate(col.date = as.Date(col.date)) %>%
   group_by(grid_cell, col.date, plant_species) %>%
   summarise(num_flowers = sum(num_flowers, na.rm = TRUE), .groups = "drop") %>%
@@ -418,28 +214,21 @@ floral_data <- floral_data %>%
   select(grid_cell, col.date, richness) %>%
   left_join(week_map, by = c("col.date" = "date"))     # assign correct calendar week
 
-stopifnot(sum(is.na(floral_data$week)) == 0)
+flw.cano.comp <- floral_data %>%
+  filter(week == 1) %>%
+  left_join(cam.station.clean, by = "grid_cell")
 
-## 4D. COLLAPSE ANY REMAINING grid_cell + week DUPLICATES
-
+# collapse andy remaining grid_cell + week duplicates
 floral_data <- floral_data %>%
   group_by(grid_cell, week) %>%
   summarize(richness = mean(richness), .groups = "drop")
 
 
-## =================================================================
-## 4E. FILL MISSING WEEK-2 FLORAL RICHNESS (TEMPORARY STOPGAP)
-## =================================================================
-## No floral surveys were conducted at EQN in week 2 -- floral crew was
-## surveying a secondary/candidate site that was ultimately dropped from the
-## study, during the period when survey cadence was being switched from
-## biweekly to weekly. Bee netting DID happen at EQN in week 2.
-##
+## 4D. FILL MISSING WEEK-2 FLORAL RICHNESS (TEMPORARY STOPGAP)
+## No floral surveys were conducted at EQN in week 2, but bees were still marked at EQN week 2
+
 ## STOPGAP: linearly interpolate each grid_cell's week-2 richness between its
-## week-1 and week-3 values. Richness trajectory over the season is known to
-## be a monotonic decline, meaning a linear interpolation is appropriate,
-## at least temporarily. Revisit if this matters for final inference
-## (e.g. proper imputation node in NIMBLE).
+## week-1 and week-3 values. Properly impute missing data later...
 
 week1.richness <- floral_data %>%
   filter(week == 1) %>%
@@ -451,8 +240,6 @@ week3.richness <- floral_data %>%
 
 ## only build week-2 filler rows for grid_cells that don't already have a
 ## week-2 value, and that have BOTH a week-1 and week-3 value to interpolate
-## between (defensive -- avoids silently producing NA if week 3 is also gappy
-## for some cell)
 missing.week2 <- week1.richness %>%
   inner_join(week3.richness, by = "grid_cell") %>%
   anti_join(floral_data %>% filter(week == 2), by = "grid_cell") %>%
@@ -469,7 +256,7 @@ message("Filling week-2 richness for ", n.filled,
 floral_data <- bind_rows(floral_data, missing.week2) %>%
   arrange(grid_cell, week)
 
-## sanity check: flag any grid_cell with netting occasions in week 2 that
+## flag any grid_cell with netting occasions in week 2 that
 ## STILL lacks richness (e.g. because it was missing week 1 or week 3 too)
 week2.netted.cells <- occ.table %>% filter(week == 2) %>% distinct(grid_cell)
 still.missing <- week2.netted.cells %>%
@@ -480,27 +267,82 @@ if (nrow(still.missing) > 0) {
           "after interpolation -- check week 1 / week 3 coverage for: ",
           paste(still.missing$grid_cell, collapse = ", "))
 }
+
+## 4E. CANOPY COVER COVARIATE
+
+eqn.cells <- paste0(rep(LETTERS[6:10], each = 4), rep(3:6, times = 5))
+
+canopy_data <- cam.station.clean %>%
+  filter(grid_cell %in% eqn.cells) %>%
+  select(grid_cell, canopy_cover)
+
+## sanity checks: one canopy value per EQN grid cell, no duplicates, no NAs
+stopifnot(nrow(canopy_data) == 20)
+stopifnot(!any(duplicated(canopy_data$grid_cell)))
+stopifnot(all(eqn.cells %in% canopy_data$grid_cell))
+stopifnot(sum(is.na(canopy_data$canopy_cover)) == 0)
+
 ## 4F. JOIN FLORAL SURVEYS WITH BEE SURVEY OCCASIONS
 
 occ.table <- occ.table %>%
-  left_join(floral_data, by = c("grid_cell", "week"))
+  left_join(floral_data, by = c("grid_cell", "week")) %>%
+  left_join(canopy_data, by = "grid_cell")     # static covariate, join on grid_cell only
 
 # similar to the missing floral survey data in week 2, fill the week five G5 floral survey data
 # with the richness for week 4. Most other gridcell had little richness turnover between weeks 4 and 5
 # this can also be imputed later as a more permanent fix.
-occ.table$richness[occ.table$grid_cell == "G5" & occ.table$week == "4"] <- 16
-occ.table$richness[occ.table$grid_cell == "J5" & occ.table$week == "2"] <- 15
-occ.table$richness[occ.table$grid_cell == "J5" & occ.table$week == "3"] <- 12
-
+# the current filled values are a rough, eyeballed midpoint, and should be replaced with something more intelligent
+occ.table$richness[occ.table$grid_cell == "G5" & occ.table$week == 4] <- 16
+occ.table$richness[occ.table$grid_cell == "J5" & occ.table$week == 2] <- 15
+occ.table$richness[occ.table$grid_cell == "J5" & occ.table$week == 3] <- 12
 
 ## Create a stand-alone standardized richness object
 richness_occ <- as.numeric(scale(occ.table$richness))
+canopy_occ <- as.numeric(scale(occ.table$canopy_cover))
+
+stopifnot(sum(is.na(canopy_occ)) == 0)   # canopy is static per-cell, should never be NA here
 
 ## sanity check -- should be 0 now that the site-code/week issues are resolved
 sum(is.na(richness_occ))
 
-###NOTE: AS OF 8/13 RICHNESS IS STUPID AND WRONG
-###       THIS WILL BE RECTIFIED SOON, WITH CORRECTED SPECIES NAMES/CODES/ETC
+## 4G. Pull out core model dimensions and index vectors
+
+n.occ     <- nrow(occ.table)                  # one row per technician-visit occasion
+n.primary <- max(occ.table$week)              # number of primary periods (weeks)
+
+occ.trap <- match(occ.table$grid_cell, grid_coords$grid_cell)  # occasion -> trap row index
+occ.week <- occ.table$week                    # occasion -> week index
+
+stopifnot(sum(is.na(occ.trap)) == 0)          # all occasion grid_cells matched to grid_coords
+
+## 4H. CAMERA TRAP DATA (SYNTHETIC PLACEHOLDER) -- richness-complete cells only
+
+set.seed(123)
+
+cam.occ.table <- occ.table %>%
+  distinct(grid_cell, week, richness) %>%
+  filter(!is.na(richness)) %>%
+  left_join(canopy_data, by = "grid_cell") %>%
+  arrange(grid_cell, week)
+
+cam.occ.table$count <- rpois(nrow(cam.occ.table), lambda = 0.35)
+
+n.cam.occ <- nrow(cam.occ.table)
+cam.trap  <- match(cam.occ.table$grid_cell, grid_coords$grid_cell)
+cam.week  <- cam.occ.table$week
+
+stopifnot(sum(is.na(cam.trap)) == 0)
+
+rich.center   <- attr(scale(occ.table$richness), "scaled:center")
+rich.scale    <- attr(scale(occ.table$richness), "scaled:scale")
+canopy.center <- attr(scale(occ.table$canopy_cover), "scaled:center")
+canopy.scale  <- attr(scale(occ.table$canopy_cover), "scaled:scale")
+
+richness_cam <- as.numeric((cam.occ.table$richness - rich.center) / rich.scale)
+canopy_cam   <- as.numeric((cam.occ.table$canopy_cover - canopy.center) / canopy.scale)
+
+message("Synthetic camera data: ", n.cam.occ, " cell-weeks (richness-complete only), ",
+        sum(cam.occ.table$count > 0), " with count > 0")
 
 ## =================================================================
 ## 5. INDIVIDUAL / DETECTION MATRIX
@@ -521,8 +363,8 @@ for (k in seq_len(nrow(capture_data))) {
 M <- n.ind * 4
 y.full <- rbind(y.detect, matrix(0, M - n.ind, n.occ))
 
-## Model data list (was missing)
-SCRdata <- list(y = y.full)
+## Model data list
+SCRdata <- list(y = y.full, count = cam.occ.table$count)
 
 ## =================================================================
 ## 6. STATE-SPACE LIMITS AND AREA
@@ -537,7 +379,7 @@ area <- diff(xlim) * diff(ylim) / 10000  # hectares
 ## 7. INITIAL VALUES (activity centers + latent states)
 ## =================================================================
 
-## 7A. ACTIVITY CENTERS (was missing)
+## 7A. ACTIVITY CENTERS
 ## Random start for augmented individuals; detected individuals get a
 ## starting center near the average location of where they were caught.
 X <- as.matrix(grid_coords[, c("x", "y")])
@@ -583,8 +425,9 @@ SCRcode <- nimbleCode({
   ## PRIORS
   ## -------------------------
   psi       ~ dunif(0, 1)
-  beta0     ~ dnorm(0, sd = 2)
-  beta.rich ~ dnorm(0, sd = 2)
+  beta0       ~ dnorm(0, sd = 2)
+  beta.rich   ~ dnorm(0, sd = 2)
+  beta.canopy ~ dnorm(0, sd = 2)
   sigma     ~ dlnorm(meanlog = log(sigma_prior_mean), sdlog = 0.5)
   
   for (t in 1:(n.primary - 1)) {
@@ -632,17 +475,33 @@ SCRcode <- nimbleCode({
   }
   
   ## -------------------------
-  ## OBSERVATION MODEL (detection computed per occasion)
+  ## NETTING OBSERVATION MODEL (detection computed per occasion)
   ## -------------------------
   for (o in 1:n.occ) {
     
-    logit(p0[o]) <- beta0 + beta.rich * richness_occ[o]
+    logit(p0[o]) <- beta0 + beta.rich * richness_occ[o] + beta.canopy * canopy_occ[o]
     
     for (i in 1:M) {
       d2[i, o] <- (s[i, 1] - X[occ.trap[o], 1])^2 + (s[i, 2] - X[occ.trap[o], 2])^2
       p[i, o]  <- p0[o] * exp(-d2[i, o] / (2 * sigma^2)) * alive[i, occ.week[o]]
       y[i, o]  ~ dbern(p[i, o])
     }
+  }
+  
+  ## -------------------------
+  ## CAMERA OBSERVATION MODEL (spatial count, no individual identity required)
+  ## -------------------------
+  for (c in 1:n.cam.occ) {
+    
+    logit(p0.cam[c]) <- beta0 + beta.rich * richness_cam[c] + beta.canopy * canopy_cam[c]
+    
+    for (i in 1:M) {
+      d2.cam[i, c] <- (s[i, 1] - X[cam.trap[c], 1])^2 + (s[i, 2] - X[cam.trap[c], 2])^2
+      p.cam[i, c]  <- p0.cam[c] * exp(-d2.cam[i, c] / (2 * sigma^2)) * alive[i, cam.week[c]]
+    }
+    
+    lambda[c]  <- sum(p.cam[1:M, c])
+    count[c]   ~ dpois(lambda[c])
   }
   
   ## -------------------------
@@ -673,7 +532,13 @@ SCRconstants <- list(
   ylim             = ylim,
   area             = area,
   sigma_prior_mean = 168,
-  richness_occ     = richness_occ
+  richness_occ     = richness_occ,
+  canopy_occ       = canopy_occ,
+  n.cam.occ        = n.cam.occ,
+  cam.trap         = cam.trap,
+  cam.week         = cam.week,
+  richness_cam     = richness_cam,
+  canopy_cam       = canopy_cam
 )
 
 SCRinits <- list(
@@ -682,12 +547,14 @@ SCRinits <- list(
   psi       = 0.5,
   beta0     = -2,
   beta.rich = 0,
+  beta.canopy = 0,
   sigma     = 168,
   gamma     = rep(0.3, n.primary - 1),
   phi       = rep(0.8, n.primary - 1)
 )
 
-mod.parameters <- c("N", "D", "Nsuper", "beta0", "beta.rich", "sigma", "psi", "gamma", "phi")
+mod.parameters <- c("N", "D", "Nsuper", "beta0", "beta.rich", "beta.canopy",
+                    "sigma", "psi", "gamma", "phi", "lambda")
 
 ## =================================================================
 ## 10. BUILD, COMPILE, RUN (short test first)
@@ -702,7 +569,7 @@ SCRconf <- configureMCMC(SCRmodel, monitors = mod.parameters)
 SCRmcmc <- buildMCMC(SCRconf)
 SCRcompiledMCMC <- compileNimble(SCRmcmc, project = SCRmodel)
 
-test.samples <- runMCMC(SCRcompiledMCMC, niter = 60000, nburnin = 20000,
+test.samples <- runMCMC(SCRcompiledMCMC, niter = 1000, nburnin = 300,
                         nchains = 3, thin = 5, samplesAsCodaMCMC = TRUE)
 
 summary(test.samples)
@@ -717,9 +584,6 @@ jagsUI::traceplot(s.mix.summary)
 library(coda)
 plot(test.samples[, c("psi", "sigma", "beta0", "beta.rich")])
 
-##############################################
-########## ^^^^^ TESTING ZONE^^^^^ ###########
-##############################################
 # ----------------- #
 # Plot model output #
 # ----------------- #

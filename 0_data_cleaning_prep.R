@@ -44,11 +44,14 @@ library(vegan)
 #gs4_auth()
 
 # read in marking data
-marks.raw <- read_sheet("https://docs.google.com/spreadsheets/d/1wtfdxRRhlg5yZoLbu-tqaY9LnAC3Y5dakotjqQ_6Ikg/edit?gid=0#gid=0",
-                        col_types = "dDcTccccdcccc") %>%
+marks.raw <- read_xlsx("./data/raw/CASensors_2026_beeMarking.xlsx", sheet = "Marking data") %>%
   rename("col.date" = "date",
          "recapture_YN" = "recapture? (y/n)",
-         "grid_cell" = "grid_capture_location")
+         "grid_cell" = "grid_capture_location") %>%
+  filter(is.na(col.date) == F, # filter out empty rows attached to bottom of spreadsheet
+         is.na(Aruco_num) == F, # filter out missing codes
+         site == "EQN") %>%
+  mutate(capture_time = as.numeric(capture_time))
 
 # clean up the data (this will be updated as we find more oddities)
 ## DECISION POINT: all ambiguous vos/calig are put into vosnesenskii until further notice
@@ -62,33 +65,22 @@ marks.clean <- marks.raw %>%
                                        .default = floral_host),
          bee_sp_id = case_when(bee_sp_id == "insularis *" ~ "insularis",
                                bee_sp_id == "flavifrons*" ~ "flavifrons",
-                               bee_sp_id == "ffavifrons" ~ "flavifrons",
-                               bee_sp_id == "v/c" ~ "vosnesenskii",
-                               bee_sp_id == "vos/calig" ~ "vosnesenskii",
-                               bee_sp_id == "vos" ~ "vosnesenskii",
+                               bee_sp_id == "vosnesenskii_caliginosus" ~ "vosnesenskii",
                                bee_sp_id == "melanopygus *" ~ "melanopygus",
+                               bee_sp_id == "insularis *" ~ "insularis",
+                               bee_sp_id == "vosnesenskii_caliginosus_insularis" ~ "vosnesenskii",
                                bee_sp_id == "No ID" ~ NA,
                                .default = bee_sp_id
                                ),
-         hour_parsed = as.numeric(format(capture_time, "%H")),
-         capture_time_fixed = case_when(
-           hour_parsed >= 1 & hour_parsed <= 4 ~ capture_time + hours(12),  # true PM, mislabeled AM
-           hour_parsed >= 7 & hour_parsed <= 11 ~ capture_time,             # true AM, leave alone
-           hour_parsed == 12 ~ capture_time,                                # assume noon-hour PM, correct already
-           hour_parsed == 0 ~ capture_time + hours(12),                     # midnight-parsed -> actually noon-hour PM
-           TRUE ~ capture_time  # hour 5 or 6 - shouldn't occur given your hours, flagged below
-         ),
-         time_only = hms::as_hms(capture_time_fixed),
          Aruco_num = as.numeric(Aruco_num)
   ) %>%
-  select(-hour_parsed) %>% # remove columns not used for analysis
   filter(is.na(Aruco_num) == F,
          is.na(bee_sp_id) == F)
 
 # Write the cleaned data to a csv file. Commented out to avoid overwriting.
-# write.csv(marks.clean,
-#           file = "../ca_sensors_saved/data/cleaned/CASensors_BeeMarking2026.csv",
-#           row.names = F)
+write.csv(marks.clean,
+          file = "../ca_sensors_saved/data/cleaned/CASensors_BeeMarking2026.csv",
+          row.names = F)
 
 # generate a summary of captures by species
 bee.sp.summary <- marks.clean %>%
@@ -133,8 +125,8 @@ ggsave(plot = bee.obs.lines, units = "in", width = 7, height = 5, device = "png"
 # -------------------------------------- #
 
 # Read in floral data
-flowers.raw <- read_sheet("https://docs.google.com/spreadsheets/d/1qkip60ZrcsjiiQpw4G_3UwqICtoXBmNGRq4MbktGFG4/edit?gid=0#gid=0",
-                          col_types = "dDccccdcc") %>%
+flowers.raw <- read_xlsx("./data/raw/CASensors_2026_FloweringPlantSurveys_Entry.xlsx",
+                         sheet = "Floral data") %>%
   rename("col.date" = "date") # rename the date column
 
 ## Generate a species list of plants for fixing plant names
@@ -151,30 +143,16 @@ flowers.clean <- flowers.raw %>%
                                               num_flowers == "3" ~ "101-1000",
                                               num_flowers == "4" ~ "1001-10000",
                                               num_flowers == "5" ~ ">10000"),
-         plant_species = case_when(plant_species == "Galium sp" ~ "Galium sp.",
-                                   plant_species == "Agoseris" ~ "Agoseris heterophylla",
-                                   .default = plant_species)
+         num_flowers = as.numeric(num_flowers)
   ) %>%
-  filter(is.na(num_flowers) == F)
+  filter(is.na(num_flowers) == F,
+         site == "EQN")
 
 # Write the cleaned data to a csv file. Commented out to avoid overwriting.
 write.csv(flowers.clean,
           file = "./data/cleaned/CASensors_Flowers_clean2026.csv",
           row.names = F)
 
-flower.summ <- flowers.clean %>%
-  mutate(week = as.integer(floor(difftime(col.date, season_start, units = "weeks"))) + 1) %>%
-  group_by(grid_cell, col.date, plant_species, week) %>%
-  summarise(num_flowers = sum(num_flowers, na.rm = TRUE), .groups = "drop") %>%
-  pivot_wider(names_from = plant_species,
-              values_from = num_flowers,
-              values_fill = 0)
-
-# Species richness per row (site/date combo)
-flower.summ$richness <- specnumber(flower.summ %>% select(-grid_cell, -col.date, -week))
-
-flower.summ <- flower.summ %>%
-  select(grid_cell, col.date, week, richness)
 # --------------------------------- #
 #  Read in and clean climatic data  #
 # --------------------------------- #
@@ -240,5 +218,21 @@ effort.clean <- effort.raw %>%
 
 # Write the cleaned data to a csv file. Commented out to avoid overwriting.
 write.csv(effort.clean,
-          file = "../cleaned/CASensors_Effort_clean.csv",
+          file = "./data/cleaned/CASensors_Effort_clean.csv",
+          row.names = F)
+
+# --------------------------------------- #
+#  Read in and clean camera station data  #
+# --------------------------------------- #
+
+cam.station.raw <- read_xlsx("./data/raw/CASensors_2026_cameraStationMetadata.xlsx") %>%
+  rename("grid_cell" = "Grid cell",
+         "canopy_cover" = "canopy cover")
+
+cam.station.clean <- cam.station.raw %>%
+  select(grid_cell, lat, long, canopy_cover)
+
+# Write the cleaned data to a csv file. Commented out to avoid overwriting.
+write.csv(cam.station.clean,
+          file = "./data/cleaned/CASensors_canopyCover_cleaned.csv",
           row.names = F)
