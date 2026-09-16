@@ -31,39 +31,6 @@ setwd(dir.CASensors)
 #install.packages("../ca_sensors/src/BPAbook_0.0.1.tar.gz", repos = NULL, type = "source")
 #library(BPAbook)
 
-# ------------------- #
-#  Load in Real Data  #
-# ------------------- #
-
-# We use real sampling effort data the days and number of cells sampled per day
-#   to tell the simulator how many days and how many cells to sample.
-# We use real canopy cover to represent the actual non-changing site conditions
-# We use real camera coordinates, there is no reason to simulate these until we
-#   want to start testing possible optimization of camera trap spacing.
-
-### Sampling effort ###
-# use actual days that we sampled for the number of sampling occasions
-effort <- read.csv("./data/cleaned/CASensors_Effort_clean.csv",
-                   header = T) %>%
-  mutate(study_week = week(date),
-         study_week = study_week-(min(study_week)-1))
-
-effort.minimal <- effort %>% select(date, grid_cell)
-
-### Canopy Cover ###
-# for now, use the real canopy cover it never changed during the study
-canopy.cover <- read.csv("./data/cleaned/CASensors_canopyCover_cleaned.csv",
-                         header = T)
-
-camera.coords <- canopy.cover %>%
-  select(grid_cell, lat, long) %>%
-  rename("y" = "lat",
-         "x" = "long") %>%
-  filter(grepl("Weather", x = grid_cell) != T,
-         grepl("C", x = grid_cell) != T,
-         grepl("D", x = grid_cell) != T,
-         grepl("E", x = grid_cell) != T)
-
 ### Grid coordinates and cell/season specs ###
 # ----------------------------- #
 #  1. Grid coordinates/geometry #
@@ -100,38 +67,46 @@ simulate_activity_centers <- function(N, state_space) {
 # ------------------- #
 #  3. Sampling Effort #
 # ------------------- #
-sampling_df <- effort.minimal
-# create a sampling effort matrix (week x grid cell matrix) from actual data
-# no simulation happening here, just builds the matrix
-build_netting_effort_from_data <- function(sampling_df, traps, n_weeks = NULL) {
+
+# function to build out an occasion matrix while tracking days and weeks of study
+# weeks will be the primary period while days while be the secondary period
+build_occasions <- function(n_weeks) {
+  tibble(
+    occasion    = 1:(n_weeks * 7),
+    week        = rep(1:n_weeks, each = 7),
+    day_in_week = rep(1:7, times = n_weeks)
+  )
+}
+
+build_netting_effort_from_data <- function(sampling_df, traps, occasions, study_start_date) {
   
   stopifnot(all(c("date", "grid_cell") %in% names(sampling_df)))
   sampling_df$date <- as.Date(sampling_df$date)
+  study_start_date <- as.Date(study_start_date)
   
-  if (!"week" %in% names(sampling_df)) {
-    # anchor to Monday-start weeks relative to the study's own start date,
-    study_start_monday <- lubridate::floor_date(min(sampling_df$date), "week", week_start = 1)
-    sampling_df$week <- as.integer(
-      lubridate::floor_date(sampling_df$date, "week", week_start = 1) - study_start_monday
-    ) %/% 7 + 1 # groups each sampling date into a week by taking the difference between
-                # each sampling occasion date and the first Monday, then dividing by 7
-                # and rounding down. The + 1 means that weeks start at 1.
+  # convert occasions to number of days since start of study
+  sampling_df$occasion <- as.integer(sampling_df$date - study_start_date) + 1
+  K <- max(occasions$occasion) # get last occasion to set end date of study
+  if (any(sampling_df$occasion < 1 | sampling_df$occasion > K)) {
+    warning("Some sampling_df dates fall outside the occasions table's date range; dropping them.")
+    # ensure only days within the study range are included
+    sampling_df <- filter(sampling_df, occasion >= 1, occasion <= K)
   }
-  if (is.null(n_weeks)) n_weeks <- max(sampling_df$week)
   
-  # list of unique cell-week combinations, each gets a 1 to populate the effort matrix
-  netted <- sampling_df %>% distinct(grid_cell, week) %>% mutate(sampled = 1L)
+  # list of unique cell-day combinations, each gets a 1 to populate the effort matrix
+  netted <- sampling_df %>% distinct(grid_cell, occasion) %>% mutate(sampled = 1L)
   
   mat <- traps %>%
     select(grid_cell) %>%
-    expand_grid(week = 1:n_weeks) %>%
-    left_join(netted, by = c("grid_cell", "week")) %>%
-    mutate(sampled = coalesce(sampled, 0L)) %>%
-    arrange(match(grid_cell, traps$grid_cell), week) %>%
+    expand_grid(occasion = 1:K) %>%
+    left_join(netted, by = c("grid_cell", "occasion")) %>%
+    # if a cell was sampled it stays a 1, if not or if it is an NA, it becomes a 0
+    mutate(sampled = coalesce(sampled, 0L)) %>% 
+    arrange(match(grid_cell, traps$grid_cell), occasion) %>%
     pull(sampled) %>%
-    matrix(nrow = nrow(traps), ncol = n_weeks, byrow = TRUE)
+    matrix(nrow = nrow(traps), ncol = K, byrow = TRUE)
   
-  list(matrix = mat, n_weeks = n_weeks, cells_per_occasion = colSums(mat))
+  list(matrix = mat, cells_per_occasion = colSums(mat))
 }
 
 # uses actual data to simulate sampling effort matrix (week x grid cell)
@@ -141,7 +116,7 @@ build_netting_effort_from_data <- function(sampling_df, traps, n_weeks = NULL) {
 # By default you set the number of cell/week to an integer, BUT you can alternatively
 #   include a vector of the number of cells netted each week
 
-simulate_netting_effort_placeholder <- function(traps, n_weeks, n_cells = 12) {
+simulate_netting_effort_placeholder <- function(traps, n_weeks, n_cells) {
   J <- nrow(traps)
   K <- n_weeks
   n_cells <- rep(n_cells, length.out = K)   # recycle if a single number was given
@@ -153,30 +128,50 @@ simulate_netting_effort_placeholder <- function(traps, n_weeks, n_cells = 12) {
   mat
 }
 
-build_effort <- function(traps, n_weeks, camera_uptime = 0.95,
+### COME BACK TO THIS AFTER DOUBLE CHECKING THE WRAPPER FUNCTION
+simulate_netting_effort_placeholder <- function(traps, occasions, n_cells,
+                                                netting_days_per_week) {
+  J <- nrow(traps)
+  K <- max(occasions$occasion)
+  mat <- matrix(0L, nrow = J, ncol = K)
+  
+  # pick which days are netting days, one week at a time
+  netting_days <- occasions %>%
+    group_by(week) %>%
+    group_modify(~ slice_sample(.x, n = netting_days_per_week)) %>%
+    ungroup() %>%
+    arrange(occasion) %>%
+    pull(occasion)
+  
+  n_cells <- rep(n_cells, length.out = length(netting_days))  # recycle if scalar
+  stopifnot(all(n_cells <= J))
+  
+  for (i in seq_along(netting_days)) {
+      mat[sample(1:J, n_cells[i]), netting_days[i]] <- 1L
+      }
+  
+  mat
+  }
+
+# generate final effort matrices includeing camera, netting and combined efforts
+build_effort <- function(traps, occasions, camera_uptime = 0.95,
                          netting_effort) {
   J <- nrow(traps)
-  K <- n_weeks
+  K <- max(occasions$occasion)
+  # cameras run every day of the study -- daily uptime placeholder
+  # by default a 5% chance that a camera doesn't work on a given occasion
   camera_effort <- matrix(rbinom(J * K, 1, camera_uptime), nrow = J, ncol = K)
- 
+  
+  stopifnot(all(dim(netting_effort) == c(J, K)))
+  
   # combined = "was this trap/occasion available to ANY detector" -- used by
   # the baseline single-p0 model below. Once pnet/pcam are split, model each
   # effort matrix against its own detection probability instead.
   combined_effort <- pmax(camera_effort, netting_effort)
+  
   list(camera = camera_effort, netting = netting_effort, combined = combined_effort)
   }
 
-
-geo.test <- build_geometry(camera_coords = camera.coords, sigma = 120)
-
-eff.test <- build_netting_effort_from_data(effort.minimal, geo_test$traps)
-
-eff.sim <- simulate_netting_effort_placeholder(geo_test$traps,
-                                               eff.test$n_weeks,
-                                               n_cells = eff.test$cells_per_occasion)
-build_effort(traps = geo_test$traps,
-             n_weeks = eff.test$n_weeks,
-             netting_effort = eff.sim)
 # ---------------------- #
 #  4. Detection Process  #
 # ---------------------- #
@@ -248,28 +243,38 @@ simulate_detections <- function(activity_centers, traps, effort, p0, sigma) {
 #' @param detector_type Which effort matrix drives detection: "combined"
 #'   (netting OR camera, the default), "netting" only, or "camera" only.
 #'   Note this still uses one shared p0 for whichever type you pick.
+#' @param study_start_date Calendar date of day 1 of week 1 -- required so
+#'   real sampling_df dates can be translated into day-occasion numbers.
+#'   Ignored if sampling_df is NULL.
+#' @param netting_days_per_week PLACEHOLDER number of netting days per week,
+#'   used only when sampling_df is not supplied.
+
 simulate_scr_dataset <- function(N, sigma, p0, n_weeks,
                                  camera_coords,
                                  sampling_df = NULL,
+                                 study_start_date = NULL,
                                  camera_uptime = 0.95,
-                                 netting_mode = c("random", "fixed"),
                                  netting_n_cells = 12,
+                                 netting_days_per_week = 3,
                                  buffer_multiplier = 4,
                                  detector_type = c("combined", "netting", "camera")) {
   
-  netting_mode <- match.arg(netting_mode)
-  detector_type <- match.arg(detector_type)
-  geo <- build_geometry(camera_coords, sigma, buffer_multiplier)
-  ac  <- simulate_activity_centers(N, geo$state_space)
+  detector_type <- match.arg(detector_type) # what to simulate - net, cam or both
+  geo <- build_geometry(camera_coords, sigma, buffer_multiplier) # build the state space
+  ac  <- simulate_activity_centers(N, geo$state_space) # generate activity centers
+  occasions <- build_occasions(n_weeks) # generate occasion matrix
   
   real_netting <- NULL
   if (!is.null(sampling_df)) {
-    real_netting <- build_netting_effort_from_data(sampling_df, geo$traps, n_weeks)$matrix
+    stopifnot(!is.null(study_start_date))   # need this to map real dates -> day-occasions
+    real_netting <- build_netting_effort_from_data(sampling_df,
+                                                   geo$traps,
+                                                   occasions,
+                                                   study_start_date)$matrix
   }
   
-  eff <- build_effort(geo$traps, n_weeks, camera_uptime,
-                      netting_effort = real_netting,
-                      netting_mode = netting_mode, netting_n_cells = netting_n_cells)
+  eff <- build_effort(geo$traps, occasions, camera_uptime,
+                      netting_effort = real_netting)
   det <- simulate_detections(ac, geo$traps, eff[[detector_type]], p0, sigma)
   
   list(
@@ -283,13 +288,68 @@ simulate_scr_dataset <- function(N, sigma, p0, n_weeks,
     data = list(
       traps = geo$traps,
       state_space = geo$state_space,
+      occasions = occasions,   # day -> week lookup for later primary-period grouping
       effort = eff,
       y_full = det$y_full,     # full latent array incl. never-detected bees
       y_obs  = det$y_obs,      # what a fitted model would actually see
       n_detected = det$n_detected
     )
   )
-}
+  }
 
 
+# ------------------- #
+#  Load in Real Data  #
+# ------------------- #
 
+# We use real sampling effort data the days and number of cells sampled per day
+#   to tell the simulator how many days and how many cells to sample.
+# We use real canopy cover to represent the actual non-changing site conditions
+# We use real camera coordinates, there is no reason to simulate these until we
+#   want to start testing possible optimization of camera trap spacing.
+
+### Sampling effort ###
+# use actual days that we sampled for the number of sampling occasions
+effort <- read.csv("./data/cleaned/CASensors_Effort_clean.csv",
+                   header = T) %>%
+  select(date, grid_cell)
+
+### Canopy Cover ###
+# for now, use the real canopy cover it never changed during the study
+canopy.cover <- read.csv("./data/cleaned/CASensors_canopyCover_cleaned.csv",
+                         header = T)
+
+camera.coords <- canopy.cover %>%
+  select(grid_cell, lat, long) %>%
+  rename("y" = "lat",
+         "x" = "long") %>%
+  filter(grepl("Weather", x = grid_cell) != T,
+         grepl("C", x = grid_cell) != T,
+         grepl("D", x = grid_cell) != T,
+         grepl("E", x = grid_cell) != T)
+
+# (N, sigma, p0, n_weeks,
+#   camera_coords,
+#   sampling_df = NULL,
+#   study_start_date = NULL,
+#   camera_uptime = 0.95,
+#   netting_n_cells = 12,
+#   netting_days_per_week = 3,
+#   buffer_multiplier = 4,
+#   detector_type = c("combined", "netting", "camera")
+
+start_date <- as.Date("2026-05-25")
+
+sim_test1 <- simulate_scr_dataset(N = 400, sigma = 120, p0 = 0.35, n_weeks = 10,
+                                  camera_coords = camera.coords,
+                                  sampling_df = effort,
+                                  study_start_date = start_date,
+                                  camera_uptime = 0.95,
+                                  buffer_multiplier = 4,
+                                  detector_type = "netting"
+                                  )
+
+# check if there are any bees in our simulation
+sim_test1$data$y_obs[, ,4] %>% view
+
+# There are! Huzzah!
