@@ -193,12 +193,6 @@ sim_params <- list(
 fit_fun_scr0 <- make_scr0_fit_fun(M = 800, niter = 10000, nburnin = 3000,
                                   thin = 5, nchains = 2)
 
-# time_one_scenario.R -- run this BEFORE the full sweep
-
-source("scr_simulator_daily.R")
-source("scr0_nimble_fit.R")
-source("scr_parameter_sweep.R")
-
 # use your real baseline params, but just ONE trial to start
 base_sim_params <- list(
   N = 400, sigma = 120, p0 = 0.15, n_weeks = 10,
