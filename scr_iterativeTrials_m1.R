@@ -259,13 +259,13 @@ run_parameter_sweep_fast <- function(base_sim_params, scenarios,
 # )
 # 
 # # run the "full sweep" of alternative parameter scenarios
-# M1_full <- run_parameter_sweep_fast(base_sim_params,
-#                                      scenarios = scenarios,
-#                                      effort_matrix_name = "camera", # using cameras for sampling
-#                                      niter = 5000, nburnin = 1000, thin = 5, nchains = 3,
-#                                      n_sims = 20, seed_start = 1, n_cores = 5,
-#                                      coverage_target = 0.95, coverage_tol = 0.10,
-#                                      bias_tol_pct = 0.10)
+M1_full <- run_parameter_sweep_fast(base_sim_params,
+                                     scenarios = scenarios,
+                                     effort_matrix_name = "camera", # using cameras for sampling
+                                     niter = 5000, nburnin = 1000, thin = 5, nchains = 3,
+                                     n_sims = 20, seed_start = 1, n_cores = 5,
+                                     coverage_target = 0.95, coverage_tol = 0.10,
+                                     bias_tol_pct = 0.10)
 
 # View the results summary for the simulated model runs
 # Reliably recovered indicates whether the proportion of trials where the true value fell within the trial's
@@ -275,3 +275,60 @@ run_parameter_sweep_fast <- function(base_sim_params, scenarios,
 #View(M1_full$summary)
 
 #saveRDS(M1_full, file = "../ca_sensors/r_outputs/M1_model_simulations.R")
+View(M1_full$results)
+write.csv(M1_full$summary, "~/Desktop/M1_summary.csv", row.names = F)
+write.csv(M1_full$results, "~/Desktop/M1_results.csv", row.names = F)
+
+# -----------------------------------------------------------------------
+# 5. PLOTS -- both work directly off results (from run_scenario_fast() or
+#    run_parameter_sweep_fast()); no changes needed elsewhere to use these.
+# -----------------------------------------------------------------------
+
+#' Per-trial recovery: one point (+ 95% CI) per trial, vs. the true value.
+#' Faceted by parameter (rows) x scenario (columns).
+plot_recovery <- function(results, params = NULL, scenarios = NULL) {
+  df <- results
+  if (!is.null(params)) df <- filter(df, param %in% params)
+  if (!is.null(scenarios)) df <- filter(df, scenario %in% scenarios)
+  
+  ggplot(df, aes(x = sim_id, y = estimate)) +
+    geom_hline(aes(yintercept = truth), color = "firebrick", linetype = "dashed") +
+    geom_pointrange(aes(ymin = lower, ymax = upper), size = 0.3, color = "steelblue") +
+    facet_grid(param ~ scenario, scales = "free_y") +
+    labs(x = "Trial", y = "Estimate (95% CI)",
+         title = "Per-trial parameter recovery",
+         subtitle = "Dashed line = true value") +
+    theme_minimal()
+}
+
+#' Density of estimates across trials, one curve per scenario, faceted by
+#' parameter. Dashed vertical lines mark each scenario's true value.
+plot_estimate_density <- function(results, params = NULL, scenarios = NULL) {
+  df <- results
+  if (!is.null(params)) df <- filter(df, param %in% params)
+  if (!is.null(scenarios)) df <- filter(df, scenario %in% scenarios)
+  
+  truth_df <- distinct(df, scenario, param, truth)
+  
+  ggplot(df, aes(x = estimate, fill = scenario, color = scenario)) +
+    geom_density(alpha = 0.3) +
+    geom_vline(data = truth_df, aes(xintercept = truth, color = scenario),
+               linetype = "dashed", show.legend = FALSE) +
+    facet_wrap(~ param, scales = "free") +
+    labs(x = "Estimate", y = "Density",
+         title = "Distribution of estimates across trials",
+         subtitle = "Dashed lines = true values") +
+    theme_minimal()
+}
+
+# =============================================================================
+# PLOTS -- example usage
+# =============================================================================
+
+M1_summ_plot <- plot_recovery(M1_full$results)
+
+ggsave(M1_summ_plot,
+       file = "./figures/simulation_figures/M1_summary_pointsError.png",
+       device = "png", units = "in", height = 6, width = 11)
+
+plot_estimate_density(M1_full$results)
