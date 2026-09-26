@@ -301,26 +301,6 @@ plot_recovery <- function(results, params = NULL, scenarios = NULL) {
     theme_minimal()
 }
 
-#' Density of estimates across trials, one curve per scenario, faceted by
-#' parameter. Dashed vertical lines mark each scenario's true value.
-plot_estimate_density <- function(results, params = NULL, scenarios = NULL) {
-  df <- results
-  if (!is.null(params)) df <- filter(df, param %in% params)
-  if (!is.null(scenarios)) df <- filter(df, scenario %in% scenarios)
-  
-  truth_df <- distinct(df, scenario, param, truth)
-  
-  ggplot(df, aes(x = estimate, fill = scenario, color = scenario)) +
-    geom_density(alpha = 0.3) +
-    geom_vline(data = truth_df, aes(xintercept = truth, color = scenario),
-               linetype = "dashed", show.legend = FALSE) +
-    facet_wrap(~ param, scales = "free") +
-    labs(x = "Estimate", y = "Density",
-         title = "Distribution of estimates across trials",
-         subtitle = "Dashed lines = true values") +
-    theme_minimal()
-}
-
 # =============================================================================
 # PLOTS -- example usage
 # =============================================================================
@@ -330,5 +310,3 @@ M1_summ_plot <- plot_recovery(M1_full$results)
 ggsave(M1_summ_plot,
        file = "./figures/simulation_figures/M1_summary_pointsError.png",
        device = "png", units = "in", height = 6, width = 11)
-
-plot_estimate_density(M1_full$results)
